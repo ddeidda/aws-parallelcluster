@@ -79,6 +79,17 @@ def mock_pcluster_config(mocker, scheduler=None):
     )
     mocker.patch("pcluster.config.param_types.get_avail_zone", return_value="mocked_avail_zone")
     mocker.patch.object(PclusterConfig, "_PclusterConfig__check_account_capacity")
+    # Mock IAM policies validator to prevent boto3 calls in tests
+    accepted_policies = [
+        "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
+        "arn:aws:iam::aws:policy/AWSBatchFullAccess",
+    ]
+
+    def mock_iam_policies_validate(self):
+        """Mock validation: just check that the policy is among the accepted ones."""
+        assert set(self.value).issubset(accepted_policies)
+
+    mocker.patch("pcluster.config.param_types.AdditionalIamPoliciesParam.validate", new=mock_iam_policies_validate)
 
 
 def assert_param_validator(mocker, config_parser_dict, expected_error=None, capsys=None, expected_warning=None):
@@ -97,7 +108,7 @@ def assert_param_validator(mocker, config_parser_dict, expected_error=None, caps
 
 
 def assert_section_from_cfn(mocker, section_definition, cfn_params_dict, expected_section_dict):
-
+    mocker.patch("pcluster.config.param_types.get_avail_zone", return_value=None)
     cfn_params = []
     for cfn_key, cfn_value in cfn_params_dict.items():
         cfn_params.append({"ParameterKey": cfn_key, "ParameterValue": cfn_value})

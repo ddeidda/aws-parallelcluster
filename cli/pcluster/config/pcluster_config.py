@@ -56,8 +56,10 @@ class PclusterConfig(object):
         :param cluster_name: the cluster name associated to a running Stack,
         if specified the initialization will start from the running Stack
         """
+        self.__stale = False  # Config Stale status
+        self.__refreshing = False  # Config refreshing status
         self.fail_on_error = fail_on_error
-        self.sections = OrderedDict({})
+        self.__sections = OrderedDict({})
 
         # always parse the configuration file if there, to get AWS section
         self._init_config_parser(config_file, fail_on_file_absence)
@@ -71,6 +73,7 @@ class PclusterConfig(object):
             self.__init_sections_from_cfn(cluster_name)
         else:
             self.__init_sections_from_file(cluster_label, self.config_parser, fail_on_file_absence)
+            self.__refresh_parameters()
 
     def _init_config_parser(self, config_file, fail_on_config_file_absence=True):
         """
@@ -124,7 +127,8 @@ class PclusterConfig(object):
         :param section_key: the identifier of the section type
         :return a dictionary containing the section
         """
-        return self.sections.get(section_key, {})
+        self.__refresh()
+        return self.__sections.get(section_key, {})
 
     def get_section(self, section_key, section_label=None):
         """
@@ -157,21 +161,37 @@ class PclusterConfig(object):
 
         :param section, a Section object
         """
-        if section.key not in self.sections:
-            self.sections[section.key] = {}
+        if section.key not in self.__sections:
+            self.__sections[section.key] = {}
 
         section_label = section.label if section.label else section.definition.get("default_label", "default")
-        self.sections[section.key][section_label] = section
+        self.__sections[section.key][section_label] = section
+        # Sections structure is altered; mark for refresh
+        self.refresh()
 
-    def remove_section(self, section_key, section_label):
+    def remove_section(self, section_key, section_label=None):
         """
         Remove a section from the PclusterConfig object, if there.
 
         :param section_key: the identifier of the section type
         :param section_label: the label of the section to delete.
         """
-        if section_key in self.sections:
-            self.sections[section_key].pop(section_label, None)
+        if section_key in self.__sections:
+            sections = self.__sections[section_key]
+
+            if section_label:
+                # If section label is specified, remove it directly
+                if section_key in self.__sections:
+                    sections.pop(section_label, None)
+            else:
+                # If no label is specified, check that no more than one section exists with the provided key
+                if len(sections) > 1:
+                    raise Exception("More than one section with key {0}".format(section_key))
+                else:
+                    self.__sections.pop(section_key)
+
+            # Sections structure is altered; mark for refresh
+            self.refresh()
 
     def __init_aws_credentials(self):
         """Set credentials in the environment to be available for all the boto3 calls."""
@@ -296,6 +316,46 @@ class PclusterConfig(object):
         except configparser.NoSectionError as e:
             self.error("Section '[{0}]' not found in the config file.".format(e.section))
 
+    def __refresh_parameters(self):
+        """
+        Refresh all parameters.
+
+        Invokes the refresh() method of all parameters, giving them the opportunity for updating their value based on
+        the PclusterConfig status.
+        """
+        for _, sections in self.__sections.items():
+            for _, section in sections.items():
+                for _, param in section.params.items():
+                    param.refresh()
+
+    def __refresh(self):
+        """
+        Reload the sections structure.
+
+        Reloading is performed only if the configuration has been marked as stale (in general by invoking the
+        public refresh() method) and only if a refresh operation is not already in progress.
+        """
+        if self.__stale and not self.__refreshing:
+            self.__refreshing = True
+            new_sections = OrderedDict({})
+            for key, sections in self.__sections.items():
+                new_sections_map = {}
+                new_sections[key] = new_sections_map
+                for _, section in sections.items():
+                    new_sections_map[section.label] = section
+            self.__sections = new_sections
+            self.__refresh_parameters()
+            self.__stale = False
+            self.__refreshing = False
+
+    def refresh(self):
+        """
+        Mark the object as stale.
+
+        When the object is marked as stale, the next call to one of its public methods will trigger a refresh operation.
+        """
+        self.__stale = True
+
     def __init_sections_from_cfn(self, cluster_name):
         try:
             stack = get_stack(get_stack_name(cluster_name))
@@ -314,7 +374,7 @@ class PclusterConfig(object):
 
     def validate(self):
         """Validate the configuration."""
-        for _, sections in self.sections.items():
+        for _, sections in self.__sections.items():
             for _, section in sections.items():
                 section.validate()
 

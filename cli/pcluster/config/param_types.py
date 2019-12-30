@@ -139,7 +139,11 @@ class Param(object):
     def to_file(self, config_parser, write_defaults=False):
         """Set parameter in the config_parser in the right section."""
         section_name = _get_file_section_name(self.section_key, self.section_label)
-        if self.value is not None and (write_defaults or self.value != self.get_default_value()):
+        if (
+            self.value is not None
+            and (write_defaults or self.value != self.get_default_value())
+            and self.get_string_value()
+        ):
             _ensure_section_existence(config_parser, section_name)
             config_parser.set(section_name, self.key, self.get_string_value())
         else:
@@ -189,6 +193,15 @@ class Param(object):
         Used when the parameter must go into a comma separated CFN parameter.
         """
         return str(self.value if self.value is not None else self.definition.get("default", "NONE"))
+
+    def refresh(self):
+        """
+        Refresh the parameter's value.
+
+        Does nothing by default. Subclasses can implement this method by updating parameter's value based on
+        PClusterConfig status.
+        """
+        pass
 
 
 class CommaSeparatedParam(Param):
@@ -641,45 +654,33 @@ class AdditionalIamPoliciesParam(CommaSeparatedParam):
       during CFN conversion.
     """
 
+    policy_inclusion_rules = [CloudWatchAgentServerPolicyInclusionRule, AWSBatchFullAccessInclusionRule]
+
     def __init__(self, section_key, section_label, param_key, param_definition, pcluster_config):
         super(AdditionalIamPoliciesParam, self).__init__(
             section_key, section_label, param_key, param_definition, pcluster_config
         )
-        self.policy_inclusion_rules = [CloudWatchAgentServerPolicyInclusionRule, AWSBatchFullAccessInclusionRule]
 
-    def to_file(self, config_parser, write_defaults=False):
-        """Set parameter in the config_parser in the right section."""
-        # remove conditional policies, if there
-        self._remove_conditional_policies()
-        super(AdditionalIamPoliciesParam, self).to_file(config_parser)
+    def get_string_value(self):
+        """Convert internal representation into string. Conditionally enabled policies are not written."""
+        non_conditional_iam_policies = self._non_conditional_iam_policies()
+        return str(",".join(non_conditional_iam_policies)) if len(non_conditional_iam_policies) else None
 
-    def from_cfn_params(self, cfn_params):
-        """
-        Initialize parameter value by parsing CFN input parameters.
+    def refresh(self):
+        """Refresh the additional IAM policies by adding conditional policies, if needed."""
+        additional_policies = self.value
+        for rule in AdditionalIamPoliciesParam.policy_inclusion_rules:
+            if rule.policy_is_required(self.pcluster_config) and rule.get_policy() not in additional_policies:
+                additional_policies.append(rule.get_policy())
+        self.value = sorted(set(additional_policies))
 
-        :param cfn_params: list of all the CFN parameters, used if "cfn_param_mapping" is specified in the definition
-        """
-        super(AdditionalIamPoliciesParam, self).from_cfn_params(cfn_params)
-        # remove conditional policies, if there
-        self._remove_conditional_policies()
-        return self
-
-    def to_cfn(self):
-        """Convert param to CFN representation, if "cfn_param_mapping" attribute is present in the Param definition."""
-        # Add conditional policies if appropriate
+    def _non_conditional_iam_policies(self):
+        """Given a list of IAM policies return a new list containing only the non conditional ones."""
+        policies = sorted(set(self.value))  # List is cloned to avoid modifying self value
         for rule in self.policy_inclusion_rules:
-            if rule.policy_is_required(self.pcluster_config) and rule.get_policy() not in self.value:
-                self.value.append(rule.get_policy())
-
-        cfn_params = super(AdditionalIamPoliciesParam, self).to_cfn()
-
-        return cfn_params
-
-    def _remove_conditional_policies(self):
-        """Remove any of the policy ARNs in self.conditional_policies from self.value."""
-        for rule in self.policy_inclusion_rules:
-            if rule.get_policy() in self.value:
-                self.value.remove(rule.get_policy())
+            if rule.get_policy() in policies and rule.policy_is_required(self.pcluster_config):
+                policies.remove(rule.get_policy())
+        return policies
 
 
 class AvailabilityZoneParam(Param):
@@ -729,6 +730,12 @@ class ComputeAvailabilityZoneParam(AvailabilityZoneParam):
         """Initialize the Availability zone of the cluster by checking the Compute Subnet."""
         self._init_az(config_parser, "compute_subnet_id")
 
+        return self
+
+    def from_cfn_params(self, cfn_params):
+        """Initialize the Availability zone by checking the Compute Subnet from cfn."""
+        compute_subnet_id = get_cfn_param(cfn_params, "ComputeSubnetId")
+        self.value = get_avail_zone(compute_subnet_id)
         return self
 
 
@@ -886,6 +893,15 @@ class SettingsParam(Param):
 
         return cfn_params
 
+    def refresh(self):
+        """Update SettingParam value to make it match actual sections in config."""
+        sections_labels_list = []
+        sections = self.pcluster_config.get_sections(self.referred_section_key).items()
+
+        for _, section in sections:
+            sections_labels_list.append(section.label)
+        self.value = ",".join(sorted(sections_labels_list)) if sections_labels_list else None
+
 
 class EBSSettingsParam(SettingsParam):
     """
@@ -1034,12 +1050,23 @@ class Section(object):
     def __init__(self, section_definition, pcluster_config, section_label=None):
         self.definition = section_definition
         self.key = section_definition.get("key")
-        self.label = section_label or self.definition.get("default_label", "")
+        self._label = section_label or self.definition.get("default_label", "")
         self.pcluster_config = pcluster_config
 
         # initialize section parameters with default values
         self.params = {}
         self._from_definition()
+
+    @property
+    def label(self):
+        """Get the section label."""
+        return self._label
+
+    @label.setter
+    def label(self, label):
+        """Set the section label. Marks the PclusterConfig parent for refreshing if called."""
+        self._label = label
+        self.pcluster_config.refresh()
 
     def from_file(self, config_parser, fail_on_absence=False):
         """Initialize section configuration parameters by parsing config file."""
@@ -1229,6 +1256,11 @@ class Section(object):
         :return: the value of the Param object or None if the param is not present in the Section
         """
         return self.get_param(param_key).value if self.get_param(param_key) else None
+
+    @property
+    def key_param(self):
+        """Get the key parameter, if any. A key parameter is a parameter that can uniquely identify a section."""
+        return self.definition.get("key_param", None)
 
 
 class EFSSection(Section):
