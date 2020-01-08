@@ -57,6 +57,7 @@ from pcluster.config.validators import (
     fsx_validator,
     intel_hpc_validator,
     kms_key_validator,
+    maintain_initial_size_validator,
     raid_volume_iops_validator,
     scheduler_validator,
     shared_dir_validator,
@@ -497,6 +498,7 @@ CLUSTER = {
                 "type": MaintainInitialSizeParam,
                 "default": False,
                 "cfn_param_mapping": "MinSize",
+                "validators": [maintain_initial_size_validator]
             }),
             ("min_vcpus", {
                 "type": QueueSizeParam,
