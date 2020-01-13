@@ -29,12 +29,14 @@ def retry_if_subprocess_error(exception):
     return isinstance(exception, subprocess.CalledProcessError)
 
 
-def run_command(command, capture_output=True, log_error=True, env=None):
+def run_command(command, capture_output=True, log_error=True, env=None, input=None):
     """Execute shell command."""
     if isinstance(command, str):
         command = shlex.split(command)
     logging.info("Executing command: " + " ".join(command))
-    result = subprocess.run(command, capture_output=capture_output, universal_newlines=True, encoding="utf-8", env=env)
+    result = subprocess.run(
+        command, capture_output=capture_output, universal_newlines=True, encoding="utf-8", env=env, input=input
+    )
     try:
         result.check_returncode()
     except subprocess.CalledProcessError:

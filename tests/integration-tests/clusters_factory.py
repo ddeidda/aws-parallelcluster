@@ -49,7 +49,7 @@ class Cluster:
         if extra_params:
             command.extend(["--extra-parameters", extra_params])
         command.append(self.name)
-        result = run_command(command)
+        result = run_command(command, input="y\n")
         if "Status: {0} - UPDATE_COMPLETE".format(self.cfn_name) not in result.stdout:
             error = "Cluster update failed for {0} with output: {1}".format(self.name, result.stdout)
             logging.error(error)
