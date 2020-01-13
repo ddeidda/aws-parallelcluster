@@ -18,6 +18,7 @@ from configparser import NoSectionError
 
 import yaml
 from pcluster.config.iam_policy_rules import AWSBatchFullAccessInclusionRule, CloudWatchAgentServerPolicyInclusionRule
+from pcluster.config.update_policy import UpdatePolicy
 from pcluster.constants import PCLUSTER_ISSUES_LINK
 from pcluster.utils import get_avail_zone, get_cfn_param, get_efs_mount_target_id, get_instance_vcpus
 
@@ -202,6 +203,10 @@ class Param(object):
         PClusterConfig status.
         """
         pass
+
+    def get_update_policy(self):
+        """Get the update policy of the parameter."""
+        return self.definition.get("update_policy", UpdatePolicy.UNKNOWN)
 
 
 class CommaSeparatedParam(Param):

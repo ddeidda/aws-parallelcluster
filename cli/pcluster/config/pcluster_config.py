@@ -71,6 +71,7 @@ class PclusterConfig(object):
         # init pcluster_config object, from cfn or from config_file
         if cluster_name:
             self.__init_sections_from_cfn(cluster_name)
+            self.cluster_name = cluster_name
         else:
             self.__init_sections_from_file(cluster_label, self.config_parser, fail_on_file_absence)
             self.__refresh_parameters()
@@ -112,6 +113,10 @@ class PclusterConfig(object):
             self.config_parser.read(self.config_file)
         except (configparser.ParsingError, configparser.DuplicateOptionError) as e:
             self.error("Error parsing configuration file {0}.\n{1}".format(self.config_file, str(e)))
+
+    def get_section_keys(self):
+        """Return the section keys."""
+        return self.__sections.keys()
 
     def get_sections(self, section_key):
         """

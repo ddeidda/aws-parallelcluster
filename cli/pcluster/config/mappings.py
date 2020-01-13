@@ -31,6 +31,7 @@ from pcluster.config.param_types import (
     SpotBidPercentageParam,
     SpotPriceParam,
 )
+from pcluster.config.update_policy import UpdatePolicy as Updp
 from pcluster.config.validators import (
     cluster_validator,
     compute_instance_type_validator,
@@ -114,10 +115,15 @@ AWS = {
     "type": Section,
     "key": "aws",
     "params": {
-        "aws_access_key_id": {},
-        "aws_secret_access_key": {},
+        "aws_access_key_id": {
+            "update_policy": Updp.DENIED
+        },
+        "aws_secret_access_key": {
+            "update_policy": Updp.DENIED
+        },
         "aws_region_name": {
             "default": "us-east-1",  # TODO add regex
+            "update_policy": Updp.DENIED
         },
     }
 }
@@ -137,6 +143,7 @@ GLOBAL = {
         "sanity_check": {
             "type": BoolParam,
             "default": True,
+            "update_policy": Updp.ALLOWED
         },
     }
 }
@@ -173,11 +180,13 @@ VPC = {
             "cfn_param_mapping": "VPCId",
             "allowed_values": ALLOWED_VALUES["vpc_id"],
             "validators": [ec2_vpc_id_validator],
+            "update_policy": Updp.DENIED
         },
         "master_subnet_id": {
             "cfn_param_mapping": "MasterSubnetId",
             "allowed_values": ALLOWED_VALUES["subnet_id"],
             "validators": [ec2_subnet_id_validator],
+            "update_policy": Updp.DENIED
         },
         "ssh_from": {
             "default": CIDR_ALL_IPS,
@@ -188,11 +197,13 @@ VPC = {
             "cfn_param_mapping": "AdditionalSG",
             "allowed_values": ALLOWED_VALUES["security_group_id"],
             "validators": [ec2_security_group_validator],
+            "update_policy": Updp.ALLOWED
         },
         "compute_subnet_id": {
             "cfn_param_mapping": "ComputeSubnetId",
             "allowed_values": ALLOWED_VALUES["subnet_id"],
             "validators": [ec2_subnet_id_validator],
+            "update_policy": Updp.DENIED
         },
         "compute_subnet_cidr": {
             "cfn_param_mapping": "ComputeSubnetCidr",
@@ -212,12 +223,12 @@ VPC = {
             # NOTE: this is not exposed as a configuration parameter
             "type": MasterAvailabilityZoneParam,
             "cfn_param_mapping": "AvailabilityZone",
-            "updatability": Upd.IGNORED,
+            "update_policy": Updp.IGNORED
         },
         "compute_availability_zone": {
             # NOTE: this is not exposed as a configuration parameter
             "type": ComputeAvailabilityZoneParam,
-            "updatability": Upd.IGNORED,
+            "update_policy": Updp.IGNORED,
         }
     },
 }
@@ -226,12 +237,13 @@ EBS = {
     "type": Section,
     "key": "ebs",
     "default_label": "default",
+    "key_param": "shared_dir",
     "params": {
         "shared_dir": {
             "allowed_values": ALLOWED_VALUES["file_path"],
             "cfn_param_mapping": "SharedDir",
             "validators": [shared_dir_validator],
-            "updatability": Upd.DENIED
+            "update_policy": Updp.DENIED
         },
         "ebs_snapshot_id": {
             "allowed_values": ALLOWED_VALUES["snapshot_id"],
@@ -480,7 +492,7 @@ CLUSTER = {
                         "optimal" if section and section.get_param_value("scheduler") == "awsbatch" else "t2.micro",
                 "cfn_param_mapping": "ComputeInstanceType",
                 "validators": [compute_instance_type_validator],
-                "updatability": Upd.COMPUTE_FLEET_RESTART
+                "update_policy": Updp.COMPUTE_FLEET_RESTART
             }),
             ("compute_root_volume_size", {
                 "type": IntParam,
@@ -492,17 +504,20 @@ CLUSTER = {
                 "type": QueueSizeParam,
                 "default": 0,
                 "cfn_param_mapping": "DesiredSize",  # TODO verify the update case
+                "update_policy": Updp.COMPUTE_FLEET_RESTART
             }),
             ("max_queue_size", {
                 "type": QueueSizeParam,
                 "default": 10,
                 "cfn_param_mapping": "MaxSize",
+                "update_policy": Updp.COMPUTE_FLEET_RESTART
             }),
             ("maintain_initial_size", {
                 "type": MaintainInitialSizeParam,
                 "default": False,
                 "cfn_param_mapping": "MinSize",
-                "validators": [maintain_initial_size_validator]
+                "validators": [maintain_initial_size_validator],
+                "update_policy": Updp.COMPUTE_FLEET_RESTART
             }),
             ("min_vcpus", {
                 "type": QueueSizeParam,
@@ -562,6 +577,8 @@ CLUSTER = {
             ("template_url", {
                 # TODO add regex
                 "validators": [url_validator],
+                # Ignored during update since we force using previous template
+                "update_policy": Updp.IGNORED
             }),
             ("shared_dir", {
                 "type": SharedDirParam,
@@ -649,7 +666,12 @@ CLUSTER = {
                 "type": EBSSettingsParam,
                 "referred_section": EBS,
                 "validators": [ebs_settings_validator],
-                "updatability": Upd.DENIED
+                "update_policy": Updp(
+                    Updp.DENIED,
+                    fail_reason="Cannot add/remove EBS Sections",
+                    action_needed="Make sure you are using the same number of EBS sections and restore all shared_dir "
+                                  "parameters to old values"
+                )
             }),
             ("efs_settings", {
                 "type": SettingsParam,
