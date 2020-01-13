@@ -212,10 +212,12 @@ VPC = {
             # NOTE: this is not exposed as a configuration parameter
             "type": MasterAvailabilityZoneParam,
             "cfn_param_mapping": "AvailabilityZone",
+            "updatability": Upd.IGNORED,
         },
         "compute_availability_zone": {
             # NOTE: this is not exposed as a configuration parameter
             "type": ComputeAvailabilityZoneParam,
+            "updatability": Upd.IGNORED,
         }
     },
 }
@@ -229,6 +231,7 @@ EBS = {
             "allowed_values": ALLOWED_VALUES["file_path"],
             "cfn_param_mapping": "SharedDir",
             "validators": [shared_dir_validator],
+            "updatability": Upd.DENIED
         },
         "ebs_snapshot_id": {
             "allowed_values": ALLOWED_VALUES["snapshot_id"],
@@ -477,6 +480,7 @@ CLUSTER = {
                         "optimal" if section and section.get_param_value("scheduler") == "awsbatch" else "t2.micro",
                 "cfn_param_mapping": "ComputeInstanceType",
                 "validators": [compute_instance_type_validator],
+                "updatability": Upd.COMPUTE_FLEET_RESTART
             }),
             ("compute_root_volume_size", {
                 "type": IntParam,
@@ -645,6 +649,7 @@ CLUSTER = {
                 "type": EBSSettingsParam,
                 "referred_section": EBS,
                 "validators": [ebs_settings_validator],
+                "updatability": Upd.DENIED
             }),
             ("efs_settings", {
                 "type": SettingsParam,
