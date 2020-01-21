@@ -17,7 +17,7 @@ import pytest
 
 from assertpy import assert_that
 from remote_command_executor import RemoteCommandExecutor
-from tests.common.scaling_common import get_max_asg_capacity, watch_compute_nodes
+from tests.common.scaling_common import get_max_asg_capacity, get_min_asg_capacity, watch_compute_nodes
 from tests.common.schedulers_common import SlurmCommands
 from time_utils import minutes
 
@@ -43,6 +43,7 @@ def test_update(instance, region, pcluster_config_reader, clusters_factory, test
     """
     s3_arn = "arn:aws:s3:::fake_bucket/*"
     init_config = PClusterConfig(
+        initial_queue_size=0,
         max_queue_size=5,
         compute_instance_type=instance,
         compute_root_volume_size=30,
@@ -57,6 +58,7 @@ def test_update(instance, region, pcluster_config_reader, clusters_factory, test
 
     s3_arn_updated = "arn:aws:s3:::fake_bucket/fake_folder/*"
     updated_config = PClusterConfig(
+        initial_queue_size=1,
         max_queue_size=10,
         compute_instance_type="c4.xlarge",
         compute_root_volume_size=40,
@@ -67,6 +69,7 @@ def test_update(instance, region, pcluster_config_reader, clusters_factory, test
 
     # verify updated parameters
     _test_max_queue(region, cluster.cfn_name, updated_config.max_queue_size)
+    _test_initial_queue(region, cluster.cfn_name, updated_config.initial_queue_size)
     _test_s3_read_resource(region, cluster, updated_config.s3_read_resource)
     _test_s3_read_write_resource(region, cluster, updated_config.s3_read_write_resource)
 
@@ -132,6 +135,11 @@ def _update_cluster_property(cluster, property_name, property_value):
 def _test_max_queue(region, stack_name, queue_size):
     asg_max_size = get_max_asg_capacity(region, stack_name)
     assert_that(asg_max_size).is_equal_to(queue_size)
+
+
+def _test_initial_queue(region, stack_name, queue_size):
+    asg_min_size = get_min_asg_capacity(region, stack_name)
+    assert_that(asg_min_size).is_equal_to(queue_size)
 
 
 def _add_compute_nodes(slurm_commands, number_of_nodes=1):

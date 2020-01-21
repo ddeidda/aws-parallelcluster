@@ -21,6 +21,10 @@ defaults = {
     "master_subnet_id": "subnet-12345678",
     "compute_subnet_id": "subnet-12345678",
     "additional_sg": "sg-12345678",
+    "initial_queue_size": 0,
+    "max_queue_size": 10,
+    "maintain_initial_size": False,
+    "compute_instance_type": "t2.micro",
 }
 
 
@@ -50,9 +54,52 @@ def duplicate_config_file(dst_config_file, test_datadir):
     "section_key, section_label, param_key, src_param_value, dst_param_value, change_updatability_level, "
     "patch_applicability",
     [
-        ("vpc", "default", "master_subnet_id", "subnet-12345678", "subnet-1234567a", Updl.DENIED, Updl.DENIED),
-        ("vpc", "default", "additional_sg", "sg-12345678", "sg-1234567a", Updl.ALLOWED, Updl.ALLOWED),
-        ("vpc", "default", "additional_sg", "sg-12345678", "sg-1234567a", Updl.ALLOWED, Updl.ALLOWED),
+        (
+            "vpc",
+            "default",
+            "master_subnet_id",
+            "subnet-12345678",
+            "subnet-1234567a",
+            UpdatePolicy.DENIED,
+            UpdatePolicy.DENIED,
+        ),
+        ("vpc", "default", "additional_sg", "sg-12345678", "sg-1234567a", UpdatePolicy.ALLOWED, UpdatePolicy.ALLOWED),
+        (
+            "cluster",
+            "default",
+            "initial_queue_size",
+            0,
+            1,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+        ),
+        (
+            "cluster",
+            "default",
+            "max_queue_size",
+            0,
+            1,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+        ),
+        (
+            "cluster",
+            "default",
+            "maintain_initial_size",
+            0,
+            1,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+        ),
+        (
+            "cluster",
+            "default",
+            "compute_instance_type",
+            "t2.micro",
+            "c4.xlarge",
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+            UpdatePolicy.COMPUTE_FLEET_RESTART,
+        ),
     ],
 )
 def test_single_param_change(

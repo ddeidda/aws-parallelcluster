@@ -121,3 +121,8 @@ def get_desired_asg_capacity(region, stack_name):
 def get_max_asg_capacity(region, stack_name):
     """Retrieve the max capacity of the autoscaling group for a specific cluster."""
     return _get_asg(region, stack_name)["MaxSize"]
+
+
+def get_min_asg_capacity(region, stack_name):
+    """Retrieve the min capacity of the autoscaling group for a specific cluster."""
+    return _get_asg(region, stack_name)["MinSize"]
