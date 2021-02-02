@@ -123,3 +123,28 @@ class SlurmCluster(BaseCluster):
                         os=self.image.os,
                         architecture=self.architecture,
                     )
+
+    @property
+    def compute_subnet_ids(self):
+        """Return the list of all compute subnet ids in the cluster."""
+        return list(
+            {
+                subnet_id
+                for queue in self.scheduling.queues
+                if queue.networking.subnet_ids
+                for subnet_id in queue.networking.subnet_ids.value
+                if queue.networking.subnet_ids
+            }
+        )
+
+    @property
+    def compute_security_groups(self):
+        """Return the list of all compute security groups in the cluster."""
+        return list(
+            {
+                security_group
+                for queue in self.scheduling.queues
+                if queue.networking.security_groups
+                for security_group in queue.networking.security_groups.value
+            }
+        )

@@ -14,9 +14,10 @@
 #
 
 from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_fsx as fsx
 from aws_cdk import core
 
-from pcluster.models.cluster import HeadNode, SharedFsx
+from pcluster.models.cluster import HeadNode, SharedFsx, SharedStorage
 from pcluster.models.cluster_slurm import SlurmCluster
 
 
@@ -183,11 +184,43 @@ class FsxConstruct(core.Construct):
     """Create the resources related to the FSX."""
 
     # https://cdkworkshop.com/30-python/40-hit-counter/100-api.html
-    def __init__(self, scope: core.Construct, id: str, fsx: SharedFsx, **kwargs):
+    def __init__(
+        self, scope: core.Construct, id: str, shared_fsx: SharedFsx, subnet_ids: [str], security_group_ids: [str]
+    ):
         super().__init__(scope, id)
-        self.fsx = fsx
-        # TODO add all the other required info other than fsx object and generate template
-        # TODO Verify if there are building blocks ready to be used
+        self.shared_fsx = shared_fsx
+
+        fsx_resource = fsx.CfnFileSystem(
+            scope=scope,
+            storage_capacity=shared_fsx.storage_capacity.value,
+            lustre_configuration=fsx.CfnFileSystem.LustreConfigurationProperty(
+                deployment_type=shared_fsx.deployment_type.value,
+                imported_file_chunk_size=shared_fsx.imported_file_chunk_size.value,
+                export_path=shared_fsx.export_path.value,
+                import_path=shared_fsx.import_path.value,
+                weekly_maintenance_start_time=shared_fsx.weekly_maintenance_start_time.value,
+                automatic_backup_retention_days=shared_fsx.automatic_backup_retention_days.value,
+                copy_tags_to_backups=shared_fsx.copy_tags_to_backups.value,
+                daily_automatic_backup_start_time=shared_fsx.daily_automatic_backup_start_time.value,
+                per_unit_storage_throughput=shared_fsx.per_unit_storage_throughput.value,
+                auto_import_policy=shared_fsx.auto_import_policy.value,
+                drive_cache_type=shared_fsx.drive_cache_type.value,
+            ),
+            backup_id=shared_fsx.backup_id.value,
+            kms_key_id=shared_fsx.kms_key_id.value,
+            id=shared_fsx.file_system_id.value,
+            file_system_type="LUSTRE",
+            storage_type=shared_fsx.drive_cache_type.value,
+            subnet_ids=subnet_ids,
+            security_group_ids=security_group_ids,
+        )
+
+        core.CfnOutput(
+            self,
+            id="FileSystemId",
+            description="ID of the FSX FileSystem",
+            value=fsx_resource.ref,
+        )
 
 
 class ClusterStack(core.Stack):
@@ -200,8 +233,14 @@ class ClusterStack(core.Stack):
         HeadNodeConstruct(self, "HeadNode", cluster.head_node)
         if cluster.shared_storage:
             for storage in cluster.shared_storage:
-                if storage.fsx:
-                    FsxConstruct(self, "Fsx", storage.fsx)
+                if storage.shared_storage_type == SharedStorage.Type.FSX:
+                    FsxConstruct(
+                        self,
+                        "Fsx",
+                        storage,
+                        subnet_ids=cluster.compute_subnet_ids,
+                        security_group_ids=cluster.compute_security_groups,
+                    )
                 # if storage.efs:
                 #    EfsConstruct(storage.efs)  # TODO Verify if there are building blocks ready to be used
                 # if storage.ebs:
