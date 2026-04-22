@@ -1,4 +1,4 @@
-boto3>=1.16.14
+boto3>=1.42.93
 tabulate>=0.8.2,<0.8.10
 ipaddress>=1.0.22
 PyYAML>=5.3.1
